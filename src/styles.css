@@ -185,10 +185,119 @@ input[type="number"], input[type="text"], select {
   width: 9px; height: 9px;
   background: var(--accent);
   transform: translate(-50%, -50%) rotate(45deg);
-  cursor: pointer;
+  cursor: ew-resize;
   border: 1px solid #fff2;
 }
 .kf:hover { background: var(--accent-2); }
+.kf.selected {
+  background: #fff;
+  border-color: var(--accent);
+  width: 11px; height: 11px;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.track-clear {
+  width: 16px; height: 16px;
+  padding: 0;
+  line-height: 14px;
+  font-size: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.track-clear:hover {
+  background: #2a1818;
+  color: var(--danger);
+  border-color: #3a2222;
+}
+
+/* Easing picker in the timeline toolbar (visible when a keyframe is selected) */
+.easing-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.ease-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1;
+}
+.ease-btn:hover {
+  border-color: #3a3a3a;
+  color: var(--text);
+}
+.ease-btn.active {
+  background: var(--accent);
+  color: #0a0a0a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.ease-btn .ease-label {
+  font-size: 10px;
+}
+
+/* Spacer so the bottom track's keyframes don't get clipped */
+.timeline-spacer {
+  height: 14px;
+  background: transparent;
+}
+
+/* Sessions list */
+.session-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.session-row:hover { border-color: #333; }
+.session-info { overflow: hidden; }
+.session-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.session-date {
+  font-size: 10px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.session-actions button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
 .playhead {
   position: absolute; top: 0; bottom: 0;
   width: 1px;

@@ -12,15 +12,18 @@ export interface Keyframe {
 export function ease(u: number, kind: Easing): number {
   if (u <= 0) return 0;
   if (u >= 1) return 1;
+  // Sine-based easings — softer than the quadratic family. The quad versions
+  // (u², 1-(1-u)²) look "punchy" / "hard" because the second derivative is
+  // constant; the sine versions taper smoothly at both ends.
   switch (kind) {
     case 'linear':
       return u;
     case 'easeIn':
-      return u * u;
+      return 1 - Math.cos((u * Math.PI) / 2);
     case 'easeOut':
-      return 1 - (1 - u) * (1 - u);
+      return Math.sin((u * Math.PI) / 2);
     case 'easeInOut':
-      return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      return -(Math.cos(Math.PI * u) - 1) / 2;
   }
 }
 
