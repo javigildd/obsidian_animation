@@ -1,0 +1,80 @@
+import { useTimeline, ANIM_PROPS, AnimProp, PROP_META } from '../timeline/store';
+
+export function ControlPanel() {
+  return (
+    <div className="panel panel-left">
+      <div className="section">
+        <h3 className="section-title">Parameters</h3>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Move a slider to set the value at the current time. Click the diamond to add a keyframe;
+          click again to remove it. Defaults are used when a track has no keyframes.
+        </p>
+        {ANIM_PROPS.map((prop) => (
+          <PropSlider key={prop} prop={prop} />
+        ))}
+      </div>
+
+      <div className="section">
+        <h3 className="section-title">Tips</h3>
+        <ul style={{ margin: 0, paddingLeft: 16, color: 'var(--text-dim)', fontSize: 11, lineHeight: 1.5 }}>
+          <li>Double-click an empty spot in a timeline lane to drop a keyframe.</li>
+          <li>Shift-click a keyframe to delete it.</li>
+          <li>Alt-click a keyframe to cycle its easing (linear → easeIn → easeOut → easeInOut).</li>
+          <li>Scrub the timeline by dragging anywhere on the ruler.</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function PropSlider({ prop }: { prop: AnimProp }) {
+  const meta = PROP_META[prop];
+  const currentTime = useTimeline((s) => s.currentTime);
+  const value = useTimeline((s) => s.valueAt(prop, s.currentTime));
+  const hasKey = useTimeline((s) => s.hasKeyAt(prop, s.currentTime));
+  const kfsCount = useTimeline((s) => s.tracks[prop]?.length ?? 0);
+  const upsertKey = useTimeline((s) => s.upsertKey);
+  const removeKey = useTimeline((s) => s.removeKey);
+  const setDefault = useTimeline((s) => s.setDefault);
+
+  const handleChange = (v: number) => {
+    // If there is at least one keyframe, edits create/update a keyframe at current time.
+    // Otherwise, edits update the default.
+    if (kfsCount > 0) {
+      upsertKey(prop, currentTime, v);
+    } else {
+      setDefault(prop, v);
+    }
+  };
+
+  const toggleKey = () => {
+    if (hasKey) removeKey(prop, currentTime);
+    else upsertKey(prop, currentTime, value);
+  };
+
+  const formatted = meta.format ? meta.format(value) : value.toFixed(2);
+
+  return (
+    <div className="slider-row">
+      <div className="header">
+        <div className="label-group">
+          <span
+            className={`kf-dot${hasKey ? ' active' : ''}`}
+            title={hasKey ? 'Remove keyframe at current time' : 'Add keyframe at current time'}
+            onClick={toggleKey}
+          />
+          <span>{meta.label}</span>
+        </div>
+        <span className="value">{formatted}</span>
+      </div>
+      <input
+        type="range"
+        min={meta.min}
+        max={meta.max}
+        step={meta.step}
+        value={value}
+        onChange={(e) => handleChange(parseFloat(e.target.value))}
+      />
+    </div>
+  );
+}
