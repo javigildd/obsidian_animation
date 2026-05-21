@@ -18,9 +18,11 @@ export function ControlPanel() {
         <h3 className="section-title">Tips</h3>
         <ul style={{ margin: 0, paddingLeft: 16, color: 'var(--text-dim)', fontSize: 11, lineHeight: 1.5 }}>
           <li>Double-click an empty spot in a timeline lane to drop a keyframe.</li>
-          <li>Shift-click a keyframe to delete it.</li>
-          <li>Alt-click a keyframe to cycle its easing (linear → easeIn → easeOut → easeInOut).</li>
-          <li>Scrub the timeline by dragging anywhere on the ruler.</li>
+          <li>Click a keyframe to select it; press <b>Delete</b> or <b>Backspace</b> to remove it.</li>
+          <li>Right-click a keyframe to delete it directly.</li>
+          <li>× next to a track label clears all keyframes on that track.</li>
+          <li>Alt-click a keyframe to cycle easing (linear → easeIn → easeOut → easeInOut).</li>
+          <li>Scrub the timeline by dragging anywhere on the body.</li>
         </ul>
       </div>
     </div>

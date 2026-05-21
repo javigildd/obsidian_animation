@@ -1,13 +1,20 @@
 export interface Node {
+  /** Birth order. Lower id = earlier birth. */
   id: number;
-  size: number;
-  cluster: number;
+  /** Per-node random size factor (multiplier). 1 = average. */
+  sizeFactor: number;
+  /** Node degree at full graph (used for sizing). */
+  degree: number;
+  /** Per-node random jitter ∈ [0, 1) for misc visual variation. */
+  rand: number;
   x?: number;
   y?: number;
   vx?: number;
   vy?: number;
   fx?: number | null;
   fy?: number | null;
+  /** Time (timeline seconds) when this node became live. Used for pop-in. */
+  birthT?: number;
 }
 
 export interface Link {
@@ -29,111 +36,101 @@ export function makeRng(seed: number): () => number {
 }
 
 /**
- * Procedurally generate a graph that mimics the Obsidian look:
- *   - A dense central region with multiple clusters that share hubs.
- *   - An outer halo of short chains (disconnected components) that settle
- *     into a ring once charge + centering forces reach equilibrium.
+ * Generate a scale-free graph with Barabási–Albert preferential attachment.
+ * The output node array is ordered by birth — node[0] is born first, node[N-1] last —
+ * so the spawn animation only needs to walk the array in order.
+ *
+ *   - Each new node attaches to `m` existing nodes chosen with probability
+ *     proportional to their degree (so hubs naturally emerge).
+ *   - A small extra link is added with probability `extraLinkProb` for the
+ *     "wispy" cross-links you see in Obsidian.
+ *   - Node sizes are derived from degree (logarithmic) plus a small random kick;
+ *     this gives Obsidian's "few big notes, many small ones" feel.
  */
-export function generateGraph(count: number, seed: number = 1): Graph {
+export function generateGraph(
+  N: number,
+  seed: number = 1,
+  opts: { m?: number; extraLinkProb?: number } = {}
+): Graph {
+  const m = opts.m ?? 1;
+  const extraLinkProb = opts.extraLinkProb ?? 0.18;
   const rng = makeRng(seed);
+
   const nodes: Node[] = [];
   const links: Link[] = [];
+  if (N <= 0) return { nodes, links };
 
-  const K = Math.max(4, Math.min(24, Math.floor(count / 60)));
-  const centralCount = Math.max(K, Math.floor(count * 0.78));
-  const hubIndices: number[] = [];
+  // Selection list: each node appears (degree+1) times, so picking a uniform
+  // index from it yields a preferential-attachment draw in O(1). This is the
+  // classic BA implementation and avoids re-summing degrees each step.
+  const selection: number[] = [];
+  const degree: number[] = [];
 
-  // Hubs first (bigger).
-  for (let k = 0; k < K; k++) {
-    nodes.push({
-      id: nodes.length,
-      cluster: k,
-      size: 2.4 + rng() * 1.8,
-      x: Math.cos((k / K) * Math.PI * 2) * 40 + (rng() - 0.5) * 20,
-      y: Math.sin((k / K) * Math.PI * 2) * 40 + (rng() - 0.5) * 20,
-    });
-    hubIndices.push(k);
-  }
+  // Initial seed: one isolated node.
+  nodes.push({ id: 0, sizeFactor: 1, degree: 0, rand: rng() });
+  selection.push(0);
+  degree.push(0);
 
-  // Sub-hubs: ~10% of central, medium size, connected to a random main hub.
-  const subHubCount = Math.max(0, Math.floor(centralCount * 0.08));
-  const subHubIndices: number[] = [];
-  for (let i = 0; i < subHubCount; i++) {
-    const parentCluster = Math.floor(rng() * K);
-    const id = nodes.length;
-    nodes.push({
-      id,
-      cluster: parentCluster,
-      size: 1.4 + rng() * 0.9,
-      x: nodes[hubIndices[parentCluster]].x! + (rng() - 0.5) * 30,
-      y: nodes[hubIndices[parentCluster]].y! + (rng() - 0.5) * 30,
-    });
-    subHubIndices.push(id);
-    links.push({ source: id, target: hubIndices[parentCluster] });
-  }
+  for (let i = 1; i < N; i++) {
+    nodes.push({ id: i, sizeFactor: 1, degree: 0, rand: rng() });
+    degree.push(0);
+    selection.push(i); // appears once before any links
 
-  // Leaf nodes attached to either a hub or sub-hub.
-  while (nodes.length < centralCount) {
-    const parentCluster = Math.floor(rng() * K);
-    const useSub = subHubIndices.length > 0 && rng() < 0.55;
-    let parent: number;
-    if (useSub) {
-      const candidates = subHubIndices.filter((id) => nodes[id].cluster === parentCluster);
-      parent = candidates.length
-        ? candidates[Math.floor(rng() * candidates.length)]
-        : hubIndices[parentCluster];
-    } else {
-      parent = hubIndices[parentCluster];
+    // Pick up to m unique existing nodes via preferential attachment.
+    const picked = new Set<number>();
+    const wanted = Math.min(m, i);
+    let safety = 0;
+    while (picked.size < wanted && safety++ < 64) {
+      const j = selection[Math.floor(rng() * selection.length)];
+      if (j !== i) picked.add(j);
     }
-    const id = nodes.length;
-    nodes.push({
-      id,
-      cluster: parentCluster,
-      size: 0.7 + rng() * 0.6,
-      x: nodes[parent].x! + (rng() - 0.5) * 50,
-      y: nodes[parent].y! + (rng() - 0.5) * 50,
-    });
-    links.push({ source: id, target: parent });
-    // Occasional sibling cross-link inside the cluster for the wispy look.
-    if (rng() < 0.04) {
-      const sibling = Math.floor(rng() * id);
-      if (nodes[sibling].cluster === parentCluster && sibling !== parent) {
-        links.push({ source: id, target: sibling });
+    for (const j of picked) {
+      links.push({ source: i, target: j });
+      degree[i]++;
+      degree[j]++;
+      selection.push(i, j);
+    }
+
+    // Occasional extra link for the "wispy" look.
+    if (rng() < extraLinkProb && i > 2) {
+      let tries = 0;
+      while (tries++ < 32) {
+        const j = selection[Math.floor(rng() * selection.length)];
+        if (j !== i && !picked.has(j)) {
+          links.push({ source: i, target: j });
+          degree[i]++;
+          degree[j]++;
+          selection.push(i, j);
+          break;
+        }
       }
     }
   }
 
-  // Hub-to-hub interconnect.
-  for (let i = 0; i < hubIndices.length; i++) {
-    for (let j = i + 1; j < hubIndices.length; j++) {
-      if (rng() < 0.45) {
-        links.push({ source: hubIndices[i], target: hubIndices[j] });
-      }
-    }
+  // Bake sizeFactor based on degree. We want a few clearly large connector
+  // hubs and many small leaves (matches the Obsidian reference).
+  //   * `norm` is the log-normalized degree (0..1).
+  //   * Quadratic term keeps leaves small while letting hubs shoot up.
+  //   * Linear term gives every node *some* size scaling with degree.
+  //   * Jitter breaks ties between equally-degreed nodes.
+  // We then re-normalize so the mean sizeFactor is 1 across the graph. This
+  // makes `sizeVariance` behave intuitively: at 0 every node has radius
+  // `particleSize`; at 1, hubs are big and leaves are small.
+  const maxDeg = Math.max(1, ...degree);
+  for (let i = 0; i < nodes.length; i++) {
+    const d = degree[i];
+    nodes[i].degree = d;
+    const norm = Math.log(d + 1) / Math.log(maxDeg + 1);
+    const fromDegree = norm * norm * 7.5 + norm * 1.5;
+    const jitter = (nodes[i].rand - 0.5) * 0.3;
+    nodes[i].sizeFactor = Math.max(0.2, 0.2 + fromDegree + jitter);
   }
-
-  // Outer ring: short chains placed in a circle far from origin.
-  const outerCount = count - nodes.length;
-  let placed = 0;
-  while (placed < outerCount) {
-    const chainLen = 2 + Math.floor(rng() * 5);
-    const angle = rng() * Math.PI * 2;
-    const radius = 320 + rng() * 80;
-    const baseX = Math.cos(angle) * radius;
-    const baseY = Math.sin(angle) * radius;
-    let prev = -1;
-    for (let k = 0; k < chainLen && placed < outerCount; k++, placed++) {
-      const id = nodes.length;
-      nodes.push({
-        id,
-        cluster: -1,
-        size: 0.55 + rng() * 0.4,
-        x: baseX + (rng() - 0.5) * 14,
-        y: baseY + (rng() - 0.5) * 14,
-      });
-      if (prev !== -1) links.push({ source: prev, target: id });
-      prev = id;
-    }
+  // Normalize so mean = 1.
+  let total = 0;
+  for (let i = 0; i < nodes.length; i++) total += nodes[i].sizeFactor;
+  const mean = total / Math.max(1, nodes.length);
+  if (mean > 0) {
+    for (let i = 0; i < nodes.length; i++) nodes[i].sizeFactor /= mean;
   }
 
   return { nodes, links };
