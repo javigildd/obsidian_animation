@@ -1,7 +1,10 @@
 import { useRef, useState, useCallback, MouseEvent, useEffect } from 'react';
 import { useTimeline, ANIM_PROPS, AnimProp, PROP_META } from './store';
+import { Easing } from './interpolate';
 
+const EPS = 1e-3;
 const TRACK_LABEL_WIDTH = 130;
+const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
 
 export function Timeline() {
   const duration = useTimeline((s) => s.duration);
@@ -17,6 +20,35 @@ export function Timeline() {
 
   const laneRef = useRef<HTMLDivElement | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const removeSelected = useTimeline((s) => s.removeSelected);
+  const clearAllKeyframes = useTimeline((s) => s.clearAllKeyframes);
+  const selected = useTimeline((s) => s.selected);
+  const setKeyEasing = useTimeline((s) => s.setKeyEasing);
+
+  // Selected keyframe's current easing (for the toolbar picker).
+  const selectedEase = useTimeline((s) => {
+    if (!s.selected) return null;
+    const k = (s.tracks[s.selected.prop] ?? []).find(
+      (kf) => Math.abs(kf.t - s.selected!.t) < EPS
+    );
+    return k?.ease ?? null;
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selected) {
+          e.preventDefault();
+          removeSelected();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, removeSelected]);
 
   const handleScrub = useCallback(
     (e: MouseEvent | globalThis.MouseEvent) => {
@@ -57,7 +89,7 @@ export function Timeline() {
         <span className="time">
           {currentTime.toFixed(2)}s / {duration.toFixed(2)}s
         </span>
-        <div style={{ marginLeft: 16, display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <span className="muted">Duration</span>
           <input
             type="number"
@@ -86,12 +118,46 @@ export function Timeline() {
           <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />
           <span className="muted">Loop</span>
         </label>
+
+        {selected && selectedEase && (
+          <div className="easing-picker" title="Easing for the selected keyframe">
+            <span className="muted">Easing</span>
+            {EASINGS.map((e) => (
+              <button
+                key={e}
+                className={`ease-btn${selectedEase === e ? ' active' : ''}`}
+                onClick={() => setKeyEasing(selected.prop, selected.t, e)}
+                title={e}
+              >
+                {easingGlyph(e)}
+                <span className="ease-label">{e}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {selected && (
+            <button onClick={() => removeSelected()} className="danger" title="Delete selected keyframe (Del)">
+              Delete keyframe
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (confirm('Remove all keyframes from every track?')) clearAllKeyframes();
+            }}
+            title="Clear all keyframes on every track"
+          >
+            Clear all
+          </button>
+        </div>
       </div>
 
       <div
         className="timeline-body"
         ref={laneRef}
         onMouseDown={(e) => {
+          // Ignore mousedown that started on a keyframe (it stops propagation).
           setScrubbing(true);
           handleScrub(e);
         }}
@@ -115,7 +181,9 @@ export function Timeline() {
           <PropTrack key={prop} prop={prop} />
         ))}
 
-        {/* Playhead overlay anchored at the lane region. */}
+        {/* Spacer so the last track's keyframes don't sit on the bottom edge. */}
+        <div className="timeline-spacer" />
+
         <div
           className="playhead"
           style={{
@@ -134,47 +202,116 @@ function PropTrack({ prop }: { prop: AnimProp }) {
   const setTime = useTimeline((s) => s.setTime);
   const upsertKey = useTimeline((s) => s.upsertKey);
   const setKeyEasing = useTimeline((s) => s.setKeyEasing);
+  const moveKey = useTimeline((s) => s.moveKey);
   const valueAt = useTimeline((s) => s.valueAt);
+  const selected = useTimeline((s) => s.selected);
+  const selectKey = useTimeline((s) => s.selectKey);
+  const clearTrack = useTimeline((s) => s.clearTrack);
+
+  const laneRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div className="timeline-track">
-      <div className="track-label">{PROP_META[prop].label}</div>
-      <div className="track-lane" onDoubleClick={(e) => {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const u = (e.clientX - rect.left) / rect.width;
-        const t = u * duration;
-        upsertKey(prop, t, valueAt(prop, t));
-        setTime(t);
-      }}>
-        {kfs.map((k) => (
-          <div
-            key={k.t}
-            className="kf"
-            title={`t=${k.t.toFixed(2)}s, v=${k.v.toFixed(2)}, ease=${k.ease} (Alt+click: cycle easing, Shift+click: delete)`}
-            style={{ left: `${(k.t / duration) * 100}%` }}
-            onMouseDown={(e) => {
+      <div className="track-label">
+        <span style={{ flex: 1 }}>{PROP_META[prop].label}</span>
+        {kfs.length > 0 && (
+          <button
+            className="track-clear"
+            title={`Clear all keyframes on "${PROP_META[prop].label}"`}
+            onClick={(e) => {
               e.stopPropagation();
-              if (e.shiftKey) {
-                removeKey(prop, k.t);
-                return;
-              }
-              if (e.altKey) {
-                const order: any[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
-                const next = order[(order.indexOf(k.ease) + 1) % order.length];
-                setKeyEasing(prop, k.t, next);
-                return;
-              }
-              setTime(k.t);
+              clearTrack(prop);
             }}
-          />
-        ))}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <div
+        className="track-lane"
+        ref={laneRef}
+        onDoubleClick={(e) => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const u = (e.clientX - rect.left) / rect.width;
+          const t = u * duration;
+          upsertKey(prop, t, valueAt(prop, t));
+          setTime(t);
+        }}
+      >
+        {kfs.map((k) => {
+          const isSelected =
+            selected && selected.prop === prop && Math.abs(selected.t - k.t) < EPS;
+          return (
+            <div
+              key={k.t}
+              className={`kf${isSelected ? ' selected' : ''}`}
+              title={`t=${k.t.toFixed(2)}s, v=${k.v.toFixed(2)}, ease=${k.ease}  ·  Drag to move  ·  Right-click or Delete to remove  ·  Alt-click to cycle easing`}
+              style={{ left: `${(k.t / duration) * 100}%` }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                removeKey(prop, k.t);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                if (e.shiftKey) {
+                  removeKey(prop, k.t);
+                  return;
+                }
+                if (e.altKey) {
+                  const order: any[] = ['linear', 'easeIn', 'easeOut', 'easeInOut'];
+                  const next = order[(order.indexOf(k.ease) + 1) % order.length];
+                  setKeyEasing(prop, k.t, next);
+                  return;
+                }
+                // Select immediately and start a drag-or-click sequence.
+                selectKey({ prop, t: k.t });
+                setTime(k.t);
+
+                const lane = laneRef.current;
+                if (!lane) return;
+                const rect = lane.getBoundingClientRect();
+                const startX = e.clientX;
+                let currentT = k.t;
+                let moved = false;
+
+                const onMove = (ev: globalThis.MouseEvent) => {
+                  if (!moved && Math.abs(ev.clientX - startX) < 3) return;
+                  moved = true;
+                  const u = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+                  const newT = u * duration;
+                  currentT = moveKey(prop, currentT, newT);
+                  setTime(currentT);
+                };
+                const onUp = () => {
+                  window.removeEventListener('mousemove', onMove);
+                  window.removeEventListener('mouseup', onUp);
+                };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+              }}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
+function easingGlyph(e: Easing): string {
+  switch (e) {
+    case 'linear':
+      return '╱';
+    case 'easeIn':
+      return '⌐';
+    case 'easeOut':
+      return '⌙';
+    case 'easeInOut':
+      return '∿';
+  }
+}
+
 function computeTicks(duration: number): { t: number; label: string }[] {
-  // Pick a nice step.
   const candidates = [0.1, 0.25, 0.5, 1, 2, 5, 10, 30];
   let step = 1;
   for (const c of candidates) {
