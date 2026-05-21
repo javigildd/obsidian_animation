@@ -5,3 +5,4 @@ dist
 .vite
 .env.local
 *.tsbuildinfo
+public/ffmpeg
