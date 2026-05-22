@@ -15,6 +15,12 @@ export interface Node {
   fy?: number | null;
   /** Time (timeline seconds) when this node became live. Used for pop-in. */
   birthT?: number;
+  /** Slowly-varying per-node drift velocity (Ornstein-Uhlenbeck state) used
+   *  by the ambient motion. Stored on the node so the random walk has memory
+   *  across ticks — that memory is what makes the motion *smooth* rather than
+   *  per-frame jittery. */
+  aDriftX?: number;
+  aDriftY?: number;
 }
 
 export interface Link {

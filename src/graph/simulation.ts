@@ -236,25 +236,39 @@ export function tick(state: GraphState, n: number = 1) {
 
   // Keep the simulation "warm" indefinitely when ambient motion is on by
   // pinning alphaTarget slightly above 0 — that way forces (charge/link/
-  // collide/center) keep applying weakly and the kick has something to push
-  // against, instead of decaying into a static frame.
+  // collide/center) keep applying weakly and the impulses have something to
+  // push against, instead of decaying into a static frame.
   const desiredTarget = ambient > 0 ? 0.01 : 0;
   if (state.sim.alphaTarget() !== desiredTarget) state.sim.alphaTarget(desiredTarget);
 
   // When ambient is off and the sim has cooled, skip ticks (no static-frame burn).
   if (ambient <= 0 && state.sim.alpha() < (state.sim.alphaMin() ?? 0.001)) return;
 
-  // Brownian kick: scaled so that 0.15 (the default) gives clearly visible
-  // perpetual drift without the layout drifting apart. Velocity decay (0.4)
-  // damps it back; link/charge pull it toward equilibrium.
-  const kick = ambient * 3.5;
+  // SMOOTH ambient motion via an Ornstein–Uhlenbeck process per node:
+  //   * Each node carries a slowly-varying "drift" velocity (aDriftX/Y).
+  //   * Each tick the drift is low-pass-filtered through a random walk:
+  //         drift = drift * persistence + tinyRandom
+  //     so the *direction* changes gradually over many frames, instead of
+  //     being re-randomized every tick.
+  //   * The drift is *always applied* on *every* node, every tick — no sparse
+  //     impulses, so there are no visible "kicks" on close-up. Velocity decay
+  //     prevents runaway, charge/link forces gently keep equilibrium.
+  //
+  // This is what gives an organic, current-like feel. Persistence near 1
+  // ⇒ very slow / glassy. Persistence near 0 ⇒ per-frame jitter (bad).
+  const persistence = 0.95;
+  const driftDelta = ambient * 0.32;
   const rng = state.sim.randomSource();
 
   for (let i = 0; i < n; i++) {
-    if (kick > 0) {
+    if (ambient > 0) {
       for (const node of state.liveNodes) {
-        node.vx = (node.vx ?? 0) + (rng() - 0.5) * kick;
-        node.vy = (node.vy ?? 0) + (rng() - 0.5) * kick;
+        const dx = (node.aDriftX ?? 0) * persistence + (rng() - 0.5) * driftDelta;
+        const dy = (node.aDriftY ?? 0) * persistence + (rng() - 0.5) * driftDelta;
+        node.aDriftX = dx;
+        node.aDriftY = dy;
+        node.vx = (node.vx ?? 0) + dx;
+        node.vy = (node.vy ?? 0) + dy;
       }
     }
     state.sim.tick();
