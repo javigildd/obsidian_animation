@@ -15,7 +15,9 @@ export type AnimProp =
   | 'forceStrength'
   | 'linkDistance'
   | 'ambientMotion'
-  | 'turnOff';
+  | 'turnOff'
+  | 'collapse'
+  | 'collapseRandom';
 
 export const PROP_META: Record<
   AnimProp,
@@ -43,6 +45,8 @@ export const PROP_META: Record<
   linkDistance: { label: 'Link distance', min: 1, max: 400, step: 1, default: 28, format: (v) => v.toFixed(0) },
   ambientMotion: { label: 'Ambient motion', min: 0, max: 1, step: 0.01, default: 0.15, format: (v) => Math.round(v * 100) + '%' },
   turnOff: { label: 'Turn off', min: 0, max: 1, step: 0.01, default: 0, format: (v) => Math.round(v * 100) + '%' },
+  collapse: { label: 'Collapse', min: 0, max: 1, step: 0.01, default: 0, format: (v) => Math.round(v * 100) + '%' },
+  collapseRandom: { label: 'Collapse random', min: 0, max: 1, step: 0.01, default: 0, format: (v) => Math.round(v * 100) + '%' },
 };
 
 export const ANIM_PROPS = Object.keys(PROP_META) as AnimProp[];

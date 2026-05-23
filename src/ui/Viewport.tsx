@@ -110,6 +110,8 @@ export function Viewport() {
           currentTime: nowT,
           birthDuration: 0.5,
           turnOff: snap.turnOff,
+          collapse: snap.collapse,
+          collapseRandom: snap.collapseRandom,
         }
       );
 

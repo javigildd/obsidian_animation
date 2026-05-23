@@ -28,6 +28,16 @@ export interface RenderParams {
   /** 0..1 — sequentially fades particles (last-born first) by opacity only.
    *  At 1 the entire graph is invisible. Does not affect physics. */
   turnOff: number;
+  /** 0..1 — render-time collapse toward origin (black-hole effect). Lerps
+   *  every node/link position toward (0,0) with an accelerating curve and
+   *  fades opacity to 0 near the end. The simulation is unaffected, so the
+   *  graph reappears in place if you bring the slider back. */
+  collapse: number;
+  /** 0..1 — stagger across particles. At 0 they all collapse at the same
+   *  rate; at 1 the latest-collapsing particles wait until the very end
+   *  before starting. The delay per node is derived from its deterministic
+   *  `rand` field, so exports stay reproducible. */
+  collapseRandom: number;
   /** Background color. Set to `null` to leave the canvas transparent
    *  (used when exporting ProRes 4444 with alpha). */
   background?: string | null;
@@ -83,6 +93,34 @@ function nodeRadius(n: Node, p: RenderParams): number {
   return Math.max(0.25 / p.zoom, f * p.particleSize);
 }
 
+/** Collapse transform applied at render time.
+ *  posMul = how much of the node's world position survives (0 = at origin).
+ *  opMul  = opacity multiplier (stays high until near the end, then fades).
+ *  Curves picked to feel like a black-hole pull-in: things drift inward
+ *  slowly at first and accelerate as the slider approaches 1.
+ *
+ *  When `randomness` > 0, each node has its own delay before it starts
+ *  collapsing (derived deterministically from `nodeRand`). All nodes still
+ *  reach full collapse at global=1, but the ramp-in is staggered. */
+function collapseMulForNode(
+  globalC: number,
+  randomness: number,
+  nodeRand: number
+): { posMul: number; opMul: number } {
+  if (globalC <= 0) return { posMul: 1, opMul: 1 };
+  // Cap the delay at 0.95 so even the "latest" node still has time to fully
+  // collapse before global reaches 1.
+  const maxDelay = Math.min(0.95, randomness);
+  const delay = maxDelay * nodeRand;
+  if (globalC <= delay) return { posMul: 1, opMul: 1 };
+  const local = Math.min(1, (globalC - delay) / (1 - delay));
+  if (local >= 1) return { posMul: 0, opMul: 0 };
+  return {
+    posMul: Math.pow(1 - local, 1.6),
+    opMul: 1 - local * local,
+  };
+}
+
 export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderParams) {
   const { width, height, dpr, zoom, rotation, panX, panY } = p;
   // `background === null` means transparent — used by alpha export so the
@@ -122,7 +160,19 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
   const idxById = new Map<number, number>();
   for (let i = 0; i < N; i++) idxById.set(graph.nodes[i].id, i);
 
+  // Pre-compute per-node collapse factors so links can reference them too.
+  const cPos = new Float32Array(N);
+  const cOp = new Float32Array(N);
+  let anyVisible = false;
+  for (let i = 0; i < N; i++) {
+    const r = collapseMulForNode(p.collapse, p.collapseRandom, graph.nodes[i].rand);
+    cPos[i] = r.posMul;
+    cOp[i] = r.opMul;
+    if (r.opMul > 0) anyVisible = true;
+  }
+
   // Links — opacity gated by the youngest endpoint AND the closest-to-death.
+  // Endpoint positions are pulled toward origin by each endpoint's own collapse.
   ctx.lineWidth = Math.max(0.4, 0.6 / zoom);
   for (const link of graph.links) {
     const s = link.source as Node;
@@ -131,33 +181,37 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
     const si = idxById.get(s.id);
     const ti = idxById.get(t.id);
     if (si == null || ti == null) continue;
-    const a = Math.min(bf[si], bf[ti]) * Math.min(df[si], df[ti]);
+    const a =
+      Math.min(bf[si], bf[ti]) * Math.min(df[si], df[ti]) * Math.min(cOp[si], cOp[ti]);
     if (a <= 0) continue;
     ctx.strokeStyle = withAlpha(linkColor, p.linkOpacity * a);
     ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(t.x, t.y);
+    ctx.moveTo(s.x * cPos[si], s.y * cPos[si]);
+    ctx.lineTo(t.x * cPos[ti], t.y * cPos[ti]);
     ctx.stroke();
   }
 
   // Glow pass (cheap radial). Intensity scales with the glow parameter.
   // The user can drop the Glow slider to 0 on very large graphs where the
   // radial-gradient pass becomes the bottleneck.
-  if (p.glow > 0) {
+  if (p.glow > 0 && anyVisible) {
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < N; i++) {
       const n = graph.nodes[i];
       if (n.x == null || n.y == null) continue;
-      const a = bf[i] * df[i];
+      const a = bf[i] * df[i] * cOp[i];
       if (a <= 0) continue;
-      // Radius driven by birth only — turnOff is opacity-only on purpose.
+      const x = n.x * cPos[i];
+      const y = n.y * cPos[i];
+      // Radius driven by birth only — turnOff and collapse are opacity-only
+      // so particles don't appear to shrink (just dim) on the way in.
       const r = nodeRadius(n, p) * bf[i];
-      const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 3.2);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
       grad.addColorStop(0, withAlpha(nodeColor, 0.22 * p.nodeOpacity * a * p.glow));
       grad.addColorStop(1, withAlpha(nodeColor, 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(n.x, n.y, r * 3.2, 0, Math.PI * 2);
+      ctx.arc(x, y, r * 3.2, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalCompositeOperation = 'source-over';
@@ -167,12 +221,12 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
   for (let i = 0; i < N; i++) {
     const n = graph.nodes[i];
     if (n.x == null || n.y == null) continue;
-    const a = bf[i] * df[i];
+    const a = bf[i] * df[i] * cOp[i];
     if (a <= 0) continue;
-    const r = nodeRadius(n, p) * bf[i]; // radius unaffected by turnOff
+    const r = nodeRadius(n, p) * bf[i];
     ctx.fillStyle = withAlpha(nodeColor, p.nodeOpacity * a);
     ctx.beginPath();
-    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.arc(n.x * cPos[i], n.y * cPos[i], r, 0, Math.PI * 2);
     ctx.fill();
   }
 

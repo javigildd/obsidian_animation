@@ -147,6 +147,8 @@ export async function exportMp4(
         currentTime: t,
         birthDuration: 0.5,
         turnOff: snap.turnOff,
+        collapse: snap.collapse,
+        collapseRandom: snap.collapseRandom,
         background: wantsAlpha ? null : '#0a0a0a',
       }
     );
