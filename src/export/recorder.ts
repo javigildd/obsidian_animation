@@ -149,7 +149,10 @@ export async function exportMp4(
         turnOff: snap.turnOff,
         collapse: snap.collapse,
         collapseRandom: snap.collapseRandom,
-        background: wantsAlpha ? null : '#0a0a0a',
+        nodeColorSmall: tl.colors.nodeSmall,
+        nodeColorBig: tl.colors.nodeBig,
+        linkColor: tl.colors.link,
+        background: wantsAlpha ? null : tl.colors.background,
       }
     );
 

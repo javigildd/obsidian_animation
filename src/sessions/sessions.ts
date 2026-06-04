@@ -1,4 +1,4 @@
-import { AnimProp } from '../timeline/store';
+import { AnimProp, ColorSettings } from '../timeline/store';
 import { Keyframe } from '../timeline/interpolate';
 
 const STORAGE_KEY = 'obsidian_animation.sessions.v1';
@@ -10,6 +10,8 @@ export interface SessionData {
   loop: boolean;
   defaults: Record<AnimProp, number>;
   tracks: Record<AnimProp, Keyframe[]>;
+  /** Optional for backwards compatibility with older saved sessions. */
+  colors?: ColorSettings;
 }
 
 export interface Session {

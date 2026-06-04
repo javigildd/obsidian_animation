@@ -68,6 +68,8 @@ export interface TimelineState {
   tracks: Record<AnimProp, Keyframe[]>;
   /** Currently selected keyframe (for Delete/Backspace). */
   selected: SelectedKey | null;
+  /** Non-animated visual settings (colors are not keyframeable scalars). */
+  colors: ColorSettings;
 
   setTime: (t: number) => void;
   setPlaying: (p: boolean) => void;
@@ -85,6 +87,7 @@ export interface TimelineState {
   moveKey: (prop: AnimProp, oldT: number, newT: number) => number;
   selectKey: (sel: SelectedKey | null) => void;
   removeSelected: () => void;
+  setColor: (key: keyof ColorSettings, value: string) => void;
 
   /** Sample the animated value of a prop at time t. */
   valueAt: (prop: AnimProp, t: number) => number;
@@ -99,6 +102,7 @@ export interface TimelineState {
     loop: boolean;
     defaults: Record<AnimProp, number>;
     tracks: Record<AnimProp, Keyframe[]>;
+    colors?: ColorSettings;
   };
   /** Replace the timeline state with a previously serialized snapshot. */
   loadSnapshot: (data: {
@@ -107,8 +111,27 @@ export interface TimelineState {
     loop: boolean;
     defaults: Record<AnimProp, number>;
     tracks: Record<AnimProp, Keyframe[]>;
+    colors?: ColorSettings;
   }) => void;
 }
+
+export interface ColorSettings {
+  /** Color for the smallest particles. */
+  nodeSmall: string;
+  /** Color for the biggest particles (hubs). Everything in between lerps. */
+  nodeBig: string;
+  /** Link stroke color. */
+  link: string;
+  /** Viewport/export background. */
+  background: string;
+}
+
+export const DEFAULT_COLORS: ColorSettings = {
+  nodeSmall: '#e8e8e8',
+  nodeBig: '#ffffff',
+  link: '#777777',
+  background: '#0a0a0a',
+};
 
 const initialDefaults: Record<AnimProp, number> = Object.fromEntries(
   ANIM_PROPS.map((p) => [p, PROP_META[p].default])
@@ -136,6 +159,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
   defaults: { ...initialDefaults },
   tracks: { ...initialTracks },
   selected: null,
+  colors: { ...DEFAULT_COLORS },
 
   setTime: (t) => set({ currentTime: Math.max(0, Math.min(get().duration, t)) }),
   setPlaying: (playing) => set({ playing }),
@@ -233,6 +257,9 @@ export const useTimeline = create<TimelineState>((set, get) => ({
     set({ tracks: { ...s.tracks, [prop]: list }, selected: null });
   },
 
+  setColor: (key, value) =>
+    set((s) => ({ colors: { ...s.colors, [key]: value } })),
+
   valueAt: (prop, t) => {
     const s = get();
     return sampleTrack(s.tracks[prop] ?? [], s.defaults[prop], t);
@@ -263,6 +290,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
       tracks: Object.fromEntries(
         ANIM_PROPS.map((p) => [p, (s.tracks[p] ?? []).map((k) => ({ ...k }))])
       ) as Record<AnimProp, Keyframe[]>,
+      colors: { ...s.colors },
     };
   },
 
@@ -287,6 +315,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
       currentTime: 0,
       playing: false,
       selected: null,
+      colors: { ...DEFAULT_COLORS, ...(data.colors ?? {}) },
     });
   },
 }));

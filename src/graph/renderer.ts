@@ -41,17 +41,46 @@ export interface RenderParams {
   /** Background color. Set to `null` to leave the canvas transparent
    *  (used when exporting ProRes 4444 with alpha). */
   background?: string | null;
-  /** Node fill color. */
-  nodeColor?: string;
+  /** Color of the smallest particles. Per-node color lerps toward
+   *  `nodeColorBig` as the node's effective size grows. */
+  nodeColorSmall?: string;
+  /** Color of the biggest particles (hubs). */
+  nodeColorBig?: string;
   /** Link stroke color. */
   linkColor?: string;
 }
 
 const DEFAULTS = {
   background: '#0a0a0a',
-  nodeColor: '#e8e8e8',
+  nodeColorSmall: '#e8e8e8',
+  nodeColorBig: '#ffffff',
   linkColor: '#777777',
 };
+
+type RGB = [number, number, number];
+
+function hexToRgb(hex: string): RGB {
+  let r = 255,
+    g = 255,
+    b = 255;
+  if (hex.startsWith('#')) {
+    if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length === 7) {
+      r = parseInt(hex.slice(1, 3), 16);
+      g = parseInt(hex.slice(3, 5), 16);
+      b = parseInt(hex.slice(5, 7), 16);
+    }
+  }
+  return [r, g, b];
+}
+
+function rgba(c: RGB, alpha: number): string {
+  const a = Math.max(0, Math.min(1, alpha));
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+}
 
 function birthFactor(birthT: number | undefined, now: number, duration: number): number {
   const bt = birthT ?? 0;
@@ -126,7 +155,8 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
   // `background === null` means transparent — used by alpha export so the
   // ProRes 4444 file has a real alpha channel instead of a black plate.
   const bg = p.background === null ? null : (p.background ?? DEFAULTS.background);
-  const nodeColor = p.nodeColor ?? DEFAULTS.nodeColor;
+  const smallRgb = hexToRgb(p.nodeColorSmall ?? DEFAULTS.nodeColorSmall);
+  const bigRgb = hexToRgb(p.nodeColorBig ?? DEFAULTS.nodeColorBig);
   const linkColor = p.linkColor ?? DEFAULTS.linkColor;
 
   ctx.save();
@@ -171,6 +201,17 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
     if (r.opMul > 0) anyVisible = true;
   }
 
+  // Per-node color: BINARY split — hubs get `nodeColorBig`, everything else
+  // gets `nodeColorSmall`. No gradient. The cutoff is on the node's intrinsic
+  // sizeFactor (mean ≈ 1 by construction): nodes ≥ BIG_CUTOFF are "big".
+  // Intrinsic (not variance-scaled) so the split stays stable while animating
+  // sizeVariance.
+  const BIG_CUTOFF = 1.8;
+  const colorOf: RGB[] = new Array(N);
+  for (let i = 0; i < N; i++) {
+    colorOf[i] = graph.nodes[i].sizeFactor >= BIG_CUTOFF ? bigRgb : smallRgb;
+  }
+
   // Links — opacity gated by the youngest endpoint AND the closest-to-death.
   // Endpoint positions are pulled toward origin by each endpoint's own collapse.
   ctx.lineWidth = Math.max(0.4, 0.6 / zoom);
@@ -207,8 +248,8 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
       // so particles don't appear to shrink (just dim) on the way in.
       const r = nodeRadius(n, p) * bf[i];
       const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
-      grad.addColorStop(0, withAlpha(nodeColor, 0.22 * p.nodeOpacity * a * p.glow));
-      grad.addColorStop(1, withAlpha(nodeColor, 0));
+      grad.addColorStop(0, rgba(colorOf[i], 0.22 * p.nodeOpacity * a * p.glow));
+      grad.addColorStop(1, rgba(colorOf[i], 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(x, y, r * 3.2, 0, Math.PI * 2);
@@ -224,7 +265,7 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
     const a = bf[i] * df[i] * cOp[i];
     if (a <= 0) continue;
     const r = nodeRadius(n, p) * bf[i];
-    ctx.fillStyle = withAlpha(nodeColor, p.nodeOpacity * a);
+    ctx.fillStyle = rgba(colorOf[i], p.nodeOpacity * a);
     ctx.beginPath();
     ctx.arc(n.x * cPos[i], n.y * cPos[i], r, 0, Math.PI * 2);
     ctx.fill();

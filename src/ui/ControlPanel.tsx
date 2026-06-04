@@ -1,8 +1,25 @@
-import { useTimeline, ANIM_PROPS, AnimProp, PROP_META } from '../timeline/store';
+import { useTimeline, ANIM_PROPS, AnimProp, PROP_META, ColorSettings } from '../timeline/store';
+
+const COLOR_FIELDS: { key: keyof ColorSettings; label: string }[] = [
+  { key: 'nodeBig', label: 'Big nodes' },
+  { key: 'nodeSmall', label: 'Small nodes' },
+  { key: 'link', label: 'Links' },
+  { key: 'background', label: 'Background' },
+];
 
 export function ControlPanel() {
   return (
     <div className="panel panel-left">
+      <div className="section">
+        <h3 className="section-title">Colors</h3>
+        {COLOR_FIELDS.map((f) => (
+          <ColorRow key={f.key} field={f.key} label={f.label} />
+        ))}
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Hubs (big connector nodes) use the "Big nodes" color; the rest use "Small nodes".
+        </p>
+      </div>
+
       <div className="section">
         <h3 className="section-title">Parameters</h3>
         <p className="muted" style={{ marginTop: 0 }}>
@@ -25,6 +42,23 @@ export function ControlPanel() {
           <li>Scrub the timeline by dragging anywhere on the body.</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+function ColorRow({ field, label }: { field: keyof ColorSettings; label: string }) {
+  const value = useTimeline((s) => s.colors[field]);
+  const setColor = useTimeline((s) => s.setColor);
+  return (
+    <div className="row color-row">
+      <label>{label}</label>
+      <span className="value">{value}</span>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => setColor(field, e.target.value)}
+        title={`${label} color`}
+      />
     </div>
   );
 }

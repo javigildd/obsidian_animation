@@ -112,6 +112,10 @@ export function Viewport() {
           turnOff: snap.turnOff,
           collapse: snap.collapse,
           collapseRandom: snap.collapseRandom,
+          nodeColorSmall: useTimeline.getState().colors.nodeSmall,
+          nodeColorBig: useTimeline.getState().colors.nodeBig,
+          linkColor: useTimeline.getState().colors.link,
+          background: useTimeline.getState().colors.background,
         }
       );
 
