@@ -41,13 +41,15 @@ export interface RenderParams {
   /** Background color. Set to `null` to leave the canvas transparent
    *  (used when exporting ProRes 4444 with alpha). */
   background?: string | null;
-  /** Color of the smallest particles. Per-node color lerps toward
-   *  `nodeColorBig` as the node's effective size grows. */
-  nodeColorSmall?: string;
-  /** Color of the biggest particles (hubs). */
-  nodeColorBig?: string;
+  /** Two colors for small particles; each node picks one deterministically
+   *  at random (so exports reproduce). */
+  nodeColorSmallA?: string;
+  nodeColorSmallB?: string;
+  /** Two colors for big particles (hubs); each node picks one at random. */
+  nodeColorBigA?: string;
+  nodeColorBigB?: string;
   /** Minimum number of DIRECT children at/above which a node uses the
-   *  "big" color. E.g. 4 = nodes with 4+ direct children are "big". */
+   *  "big" colors. E.g. 4 = nodes with 4+ direct children are "big". */
   bigThreshold?: number;
   /** Link stroke color. */
   linkColor?: string;
@@ -158,8 +160,10 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
   // `background === null` means transparent — used by alpha export so the
   // ProRes 4444 file has a real alpha channel instead of a black plate.
   const bg = p.background === null ? null : (p.background ?? DEFAULTS.background);
-  const smallRgb = hexToRgb(p.nodeColorSmall ?? DEFAULTS.nodeColorSmall);
-  const bigRgb = hexToRgb(p.nodeColorBig ?? DEFAULTS.nodeColorBig);
+  const smallRgbA = hexToRgb(p.nodeColorSmallA ?? DEFAULTS.nodeColorSmall);
+  const smallRgbB = hexToRgb(p.nodeColorSmallB ?? p.nodeColorSmallA ?? DEFAULTS.nodeColorSmall);
+  const bigRgbA = hexToRgb(p.nodeColorBigA ?? DEFAULTS.nodeColorBig);
+  const bigRgbB = hexToRgb(p.nodeColorBigB ?? p.nodeColorBigA ?? DEFAULTS.nodeColorBig);
   const linkColor = p.linkColor ?? DEFAULTS.linkColor;
 
   ctx.save();
@@ -206,12 +210,19 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
 
   // Per-node color: BINARY split — a node is "big" iff it has at least
   // `bigThreshold` DIRECT children (nodes that attached to it at birth).
-  // Everything else is "small". No gradient. Based on topology, not on the
-  // rendered radius, so the split is stable while animating sizeVariance.
+  // Everything else is "small". Within each group the node picks one of the
+  // group's two colors at random — derived from the node's seeded `rand`
+  // (decorrelated from the collapse stagger by a hash) so exports reproduce.
   const bigCutoff = Math.max(1, Math.round(p.bigThreshold ?? 4));
   const colorOf: RGB[] = new Array(N);
   for (let i = 0; i < N; i++) {
-    colorOf[i] = graph.nodes[i].childCount >= bigCutoff ? bigRgb : smallRgb;
+    const n = graph.nodes[i];
+    // Cheap decorrelating hash of rand → uniform-ish coin flip.
+    const coin = (n.rand * 16807) % 1 < 0.5;
+    colorOf[i] =
+      n.childCount >= bigCutoff
+        ? (coin ? bigRgbA : bigRgbB)
+        : (coin ? smallRgbA : smallRgbB);
   }
 
   // Links — opacity gated by the youngest endpoint AND the closest-to-death.

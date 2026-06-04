@@ -116,10 +116,12 @@ export interface TimelineState {
 }
 
 export interface ColorSettings {
-  /** Color for the smallest particles. */
-  nodeSmall: string;
-  /** Color for the biggest particles (hubs). */
-  nodeBig: string;
+  /** Two colors for small particles — each node picks one at random. */
+  nodeSmallA: string;
+  nodeSmallB: string;
+  /** Two colors for big particles (hubs) — each node picks one at random. */
+  nodeBigA: string;
+  nodeBigB: string;
   /** Link stroke color. */
   link: string;
   /** Viewport/export background. */
@@ -130,8 +132,10 @@ export interface ColorSettings {
 }
 
 export const DEFAULT_COLORS: ColorSettings = {
-  nodeSmall: '#e8e8e8',
-  nodeBig: '#ffffff',
+  nodeSmallA: '#e8e8e8',
+  nodeSmallB: '#e8e8e8',
+  nodeBigA: '#ffffff',
+  nodeBigB: '#ffffff',
   link: '#777777',
   background: '#0a0a0a',
   bigThreshold: 4,
@@ -324,12 +328,25 @@ export const useTimeline = create<TimelineState>((set, get) => ({
   },
 }));
 
-/** Merge stored colors over defaults, migrating old-scale thresholds.
- *  Sessions saved before 2026-05-22 used a sizeFactor cutoff (~1.0–4.0,
- *  fractional); the threshold now means "min direct children" (integer ≥ 1).
- *  Fractional stored values are from the old scale → reset to default. */
+/** Merge stored colors over defaults, migrating older formats.
+ *  - Sessions before 2026-05-22 used a fractional sizeFactor threshold;
+ *    the threshold now means "min direct children" (integer ≥ 1).
+ *  - Sessions with single `nodeBig`/`nodeSmall` colors map them onto the
+ *    new A/B pairs (both slots get the same color → same look as before). */
 function migrateColors(stored?: Partial<ColorSettings>): ColorSettings {
-  const merged = { ...DEFAULT_COLORS, ...(stored ?? {}) };
+  const legacy = (stored ?? {}) as Partial<ColorSettings> & {
+    nodeBig?: string;
+    nodeSmall?: string;
+  };
+  const merged = { ...DEFAULT_COLORS, ...legacy };
+  if (legacy.nodeBig) {
+    merged.nodeBigA = legacy.nodeBigA ?? legacy.nodeBig;
+    merged.nodeBigB = legacy.nodeBigB ?? legacy.nodeBig;
+  }
+  if (legacy.nodeSmall) {
+    merged.nodeSmallA = legacy.nodeSmallA ?? legacy.nodeSmall;
+    merged.nodeSmallB = legacy.nodeSmallB ?? legacy.nodeSmall;
+  }
   if (!Number.isInteger(merged.bigThreshold)) {
     merged.bigThreshold = DEFAULT_COLORS.bigThreshold;
   }

@@ -5,8 +5,10 @@ type ColorKey = {
 }[keyof ColorSettings];
 
 const COLOR_FIELDS: { key: ColorKey; label: string }[] = [
-  { key: 'nodeBig', label: 'Big nodes' },
-  { key: 'nodeSmall', label: 'Small nodes' },
+  { key: 'nodeBigA', label: 'Big nodes A' },
+  { key: 'nodeBigB', label: 'Big nodes B' },
+  { key: 'nodeSmallA', label: 'Small nodes A' },
+  { key: 'nodeSmallB', label: 'Small nodes B' },
   { key: 'link', label: 'Links' },
   { key: 'background', label: 'Background' },
 ];
@@ -22,7 +24,8 @@ export function ControlPanel() {
         <BigThresholdSlider />
         <p className="muted" style={{ marginBottom: 0 }}>
           A node is "big" when at least this many nodes attached to it directly
-          (direct children). Everything else uses the "Small nodes" color.
+          (direct children). Each node randomly picks color A or B within its group —
+          set A = B for a single solid color.
         </p>
       </div>
 
