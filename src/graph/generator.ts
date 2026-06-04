@@ -5,6 +5,9 @@ export interface Node {
   sizeFactor: number;
   /** Node degree at full graph (used for sizing). */
   degree: number;
+  /** Number of DIRECT children — younger nodes that attached to this one
+   *  when they were born. This is what decides "big node" status. */
+  childCount: number;
   /** Per-node random jitter ∈ [0, 1) for misc visual variation. */
   rand: number;
   x?: number;
@@ -73,12 +76,12 @@ export function generateGraph(
   const degree: number[] = [];
 
   // Initial seed: one isolated node.
-  nodes.push({ id: 0, sizeFactor: 1, degree: 0, rand: rng() });
+  nodes.push({ id: 0, sizeFactor: 1, degree: 0, childCount: 0, rand: rng() });
   selection.push(0);
   degree.push(0);
 
   for (let i = 1; i < N; i++) {
-    nodes.push({ id: i, sizeFactor: 1, degree: 0, rand: rng() });
+    nodes.push({ id: i, sizeFactor: 1, degree: 0, childCount: 0, rand: rng() });
     degree.push(0);
     selection.push(i); // appears once before any links
 
@@ -113,23 +116,33 @@ export function generateGraph(
     }
   }
 
-  // Bake sizeFactor based on degree. We want a few clearly large connector
-  // hubs and many small leaves (matches the Obsidian reference).
-  //   * `norm` is the log-normalized degree (0..1).
+  // Direct children: for every link, the YOUNGER endpoint (higher id) is the
+  // child that attached to the OLDER one (lower id) at birth. The older node
+  // is the parent → its childCount goes up. This is the user-facing notion
+  // of a "big node": one that many children attached to directly.
+  for (const link of links) {
+    const a = link.source as number;
+    const b = link.target as number;
+    const parent = Math.min(a, b);
+    nodes[parent].childCount++;
+  }
+
+  // Bake sizeFactor from DIRECT CHILDREN (not total degree), so visual size
+  // matches the same notion of importance used for the big/small color split.
+  //   * `norm` is the log-normalized child count (0..1).
   //   * Quadratic term keeps leaves small while letting hubs shoot up.
-  //   * Linear term gives every node *some* size scaling with degree.
-  //   * Jitter breaks ties between equally-degreed nodes.
+  //   * Linear term gives every node *some* size scaling.
+  //   * Jitter breaks ties between equally-sized nodes.
   // We then re-normalize so the mean sizeFactor is 1 across the graph. This
   // makes `sizeVariance` behave intuitively: at 0 every node has radius
   // `particleSize`; at 1, hubs are big and leaves are small.
-  const maxDeg = Math.max(1, ...degree);
+  const maxChildren = Math.max(1, ...nodes.map((n) => n.childCount));
   for (let i = 0; i < nodes.length; i++) {
-    const d = degree[i];
-    nodes[i].degree = d;
-    const norm = Math.log(d + 1) / Math.log(maxDeg + 1);
-    const fromDegree = norm * norm * 7.5 + norm * 1.5;
+    nodes[i].degree = degree[i];
+    const norm = Math.log(nodes[i].childCount + 1) / Math.log(maxChildren + 1);
+    const fromChildren = norm * norm * 7.5 + norm * 1.5;
     const jitter = (nodes[i].rand - 0.5) * 0.3;
-    nodes[i].sizeFactor = Math.max(0.2, 0.2 + fromDegree + jitter);
+    nodes[i].sizeFactor = Math.max(0.2, 0.2 + fromChildren + jitter);
   }
   // Normalize so mean = 1.
   let total = 0;

@@ -124,8 +124,8 @@ export interface ColorSettings {
   link: string;
   /** Viewport/export background. */
   background: string;
-  /** Intrinsic sizeFactor at/above which a node counts as "big".
-   *  Mean sizeFactor across a graph is ~1; hubs reach ~4-6. */
+  /** Minimum number of DIRECT children for a node to count as "big".
+   *  e.g. 4 → nodes that 4+ other nodes attached to directly. */
   bigThreshold: number;
 }
 
@@ -134,7 +134,7 @@ export const DEFAULT_COLORS: ColorSettings = {
   nodeBig: '#ffffff',
   link: '#777777',
   background: '#0a0a0a',
-  bigThreshold: 1.8,
+  bigThreshold: 4,
 };
 
 const initialDefaults: Record<AnimProp, number> = Object.fromEntries(
@@ -319,7 +319,19 @@ export const useTimeline = create<TimelineState>((set, get) => ({
       currentTime: 0,
       playing: false,
       selected: null,
-      colors: { ...DEFAULT_COLORS, ...(data.colors ?? {}) },
+      colors: migrateColors(data.colors),
     });
   },
 }));
+
+/** Merge stored colors over defaults, migrating old-scale thresholds.
+ *  Sessions saved before 2026-05-22 used a sizeFactor cutoff (~1.0–4.0,
+ *  fractional); the threshold now means "min direct children" (integer ≥ 1).
+ *  Fractional stored values are from the old scale → reset to default. */
+function migrateColors(stored?: Partial<ColorSettings>): ColorSettings {
+  const merged = { ...DEFAULT_COLORS, ...(stored ?? {}) };
+  if (!Number.isInteger(merged.bigThreshold)) {
+    merged.bigThreshold = DEFAULT_COLORS.bigThreshold;
+  }
+  return merged;
+}

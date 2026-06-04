@@ -21,8 +21,8 @@ export function ControlPanel() {
         ))}
         <BigThresholdSlider />
         <p className="muted" style={{ marginBottom: 0 }}>
-          Hubs (big connector nodes) use the "Big nodes" color; the rest use "Small nodes".
-          Lower the threshold to paint more nodes as "big".
+          A node is "big" when at least this many nodes attached to it directly
+          (direct children). Everything else uses the "Small nodes" color.
         </p>
       </div>
 
@@ -76,17 +76,17 @@ function BigThresholdSlider() {
     <div className="slider-row" style={{ marginTop: 10 }}>
       <div className="header">
         <div className="label-group">
-          <span>Big node threshold</span>
+          <span>Min direct children (big)</span>
         </div>
-        <span className="value">{value.toFixed(2)}</span>
+        <span className="value">{Math.round(value)}</span>
       </div>
       <input
         type="range"
         min={1}
-        max={4}
-        step={0.05}
+        max={30}
+        step={1}
         value={value}
-        onChange={(e) => setColor('bigThreshold', parseFloat(e.target.value))}
+        onChange={(e) => setColor('bigThreshold', parseInt(e.target.value))}
       />
     </div>
   );

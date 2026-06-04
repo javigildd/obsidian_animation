@@ -46,7 +46,8 @@ export interface RenderParams {
   nodeColorSmall?: string;
   /** Color of the biggest particles (hubs). */
   nodeColorBig?: string;
-  /** Intrinsic sizeFactor at/above which a node uses the "big" color. */
+  /** Minimum number of DIRECT children at/above which a node uses the
+   *  "big" color. E.g. 4 = nodes with 4+ direct children are "big". */
   bigThreshold?: number;
   /** Link stroke color. */
   linkColor?: string;
@@ -203,15 +204,14 @@ export function render(ctx: CanvasRenderingContext2D, graph: Graph, p: RenderPar
     if (r.opMul > 0) anyVisible = true;
   }
 
-  // Per-node color: BINARY split — hubs get `nodeColorBig`, everything else
-  // gets `nodeColorSmall`. No gradient. The cutoff is on the node's intrinsic
-  // sizeFactor (mean ≈ 1 by construction), user-adjustable via bigThreshold.
-  // Intrinsic (not variance-scaled) so the split stays stable while animating
-  // sizeVariance.
-  const bigCutoff = p.bigThreshold ?? 1.8;
+  // Per-node color: BINARY split — a node is "big" iff it has at least
+  // `bigThreshold` DIRECT children (nodes that attached to it at birth).
+  // Everything else is "small". No gradient. Based on topology, not on the
+  // rendered radius, so the split is stable while animating sizeVariance.
+  const bigCutoff = Math.max(1, Math.round(p.bigThreshold ?? 4));
   const colorOf: RGB[] = new Array(N);
   for (let i = 0; i < N; i++) {
-    colorOf[i] = graph.nodes[i].sizeFactor >= bigCutoff ? bigRgb : smallRgb;
+    colorOf[i] = graph.nodes[i].childCount >= bigCutoff ? bigRgb : smallRgb;
   }
 
   // Links — opacity gated by the youngest endpoint AND the closest-to-death.
