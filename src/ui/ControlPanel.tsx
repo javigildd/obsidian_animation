@@ -1,6 +1,10 @@
 import { useTimeline, ANIM_PROPS, AnimProp, PROP_META, ColorSettings } from '../timeline/store';
 
-const COLOR_FIELDS: { key: keyof ColorSettings; label: string }[] = [
+type ColorKey = {
+  [K in keyof ColorSettings]: ColorSettings[K] extends string ? K : never;
+}[keyof ColorSettings];
+
+const COLOR_FIELDS: { key: ColorKey; label: string }[] = [
   { key: 'nodeBig', label: 'Big nodes' },
   { key: 'nodeSmall', label: 'Small nodes' },
   { key: 'link', label: 'Links' },
@@ -15,8 +19,10 @@ export function ControlPanel() {
         {COLOR_FIELDS.map((f) => (
           <ColorRow key={f.key} field={f.key} label={f.label} />
         ))}
+        <BigThresholdSlider />
         <p className="muted" style={{ marginBottom: 0 }}>
           Hubs (big connector nodes) use the "Big nodes" color; the rest use "Small nodes".
+          Lower the threshold to paint more nodes as "big".
         </p>
       </div>
 
@@ -46,7 +52,7 @@ export function ControlPanel() {
   );
 }
 
-function ColorRow({ field, label }: { field: keyof ColorSettings; label: string }) {
+function ColorRow({ field, label }: { field: ColorKey; label: string }) {
   const value = useTimeline((s) => s.colors[field]);
   const setColor = useTimeline((s) => s.setColor);
   return (
@@ -58,6 +64,29 @@ function ColorRow({ field, label }: { field: keyof ColorSettings; label: string 
         value={value}
         onChange={(e) => setColor(field, e.target.value)}
         title={`${label} color`}
+      />
+    </div>
+  );
+}
+
+function BigThresholdSlider() {
+  const value = useTimeline((s) => s.colors.bigThreshold);
+  const setColor = useTimeline((s) => s.setColor);
+  return (
+    <div className="slider-row" style={{ marginTop: 10 }}>
+      <div className="header">
+        <div className="label-group">
+          <span>Big node threshold</span>
+        </div>
+        <span className="value">{value.toFixed(2)}</span>
+      </div>
+      <input
+        type="range"
+        min={1}
+        max={4}
+        step={0.05}
+        value={value}
+        onChange={(e) => setColor('bigThreshold', parseFloat(e.target.value))}
       />
     </div>
   );

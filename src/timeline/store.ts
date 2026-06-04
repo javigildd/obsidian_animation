@@ -87,7 +87,7 @@ export interface TimelineState {
   moveKey: (prop: AnimProp, oldT: number, newT: number) => number;
   selectKey: (sel: SelectedKey | null) => void;
   removeSelected: () => void;
-  setColor: (key: keyof ColorSettings, value: string) => void;
+  setColor: <K extends keyof ColorSettings>(key: K, value: ColorSettings[K]) => void;
 
   /** Sample the animated value of a prop at time t. */
   valueAt: (prop: AnimProp, t: number) => number;
@@ -118,12 +118,15 @@ export interface TimelineState {
 export interface ColorSettings {
   /** Color for the smallest particles. */
   nodeSmall: string;
-  /** Color for the biggest particles (hubs). Everything in between lerps. */
+  /** Color for the biggest particles (hubs). */
   nodeBig: string;
   /** Link stroke color. */
   link: string;
   /** Viewport/export background. */
   background: string;
+  /** Intrinsic sizeFactor at/above which a node counts as "big".
+   *  Mean sizeFactor across a graph is ~1; hubs reach ~4-6. */
+  bigThreshold: number;
 }
 
 export const DEFAULT_COLORS: ColorSettings = {
@@ -131,6 +134,7 @@ export const DEFAULT_COLORS: ColorSettings = {
   nodeBig: '#ffffff',
   link: '#777777',
   background: '#0a0a0a',
+  bigThreshold: 1.8,
 };
 
 const initialDefaults: Record<AnimProp, number> = Object.fromEntries(

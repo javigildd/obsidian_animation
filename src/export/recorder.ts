@@ -151,6 +151,7 @@ export async function exportMp4(
         collapseRandom: snap.collapseRandom,
         nodeColorSmall: tl.colors.nodeSmall,
         nodeColorBig: tl.colors.nodeBig,
+        bigThreshold: tl.colors.bigThreshold,
         linkColor: tl.colors.link,
         background: wantsAlpha ? null : tl.colors.background,
       }

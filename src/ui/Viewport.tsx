@@ -114,6 +114,7 @@ export function Viewport() {
           collapseRandom: snap.collapseRandom,
           nodeColorSmall: useTimeline.getState().colors.nodeSmall,
           nodeColorBig: useTimeline.getState().colors.nodeBig,
+          bigThreshold: useTimeline.getState().colors.bigThreshold,
           linkColor: useTimeline.getState().colors.link,
           background: useTimeline.getState().colors.background,
         }
